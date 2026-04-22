@@ -3,6 +3,7 @@ import { Application } from 'pixi.js';
 import { useEditor } from '../store';
 import { PixiScene } from './PixiScene';
 import { TransformOverlay, type HandleId } from './transformOverlay';
+import { SnapGuides, type GuideLine } from './snapGuides';
 import { setActiveScene, clearActiveScene } from './sceneRef';
 import { measureText } from '../text';
 import type { Layer, TextLayer } from '../types';
@@ -18,6 +19,96 @@ interface DragState {
 }
 
 /**
+ * Compute snapped position for a moving layer + the guide lines to draw.
+ * Snaps the layer's left/centerX/right to canvas + other layer L/CX/R values
+ * (and the same for top/centerY/bottom). `threshold` is in doc-space pixels.
+ */
+function computeSnap(
+  start: Layer,
+  wantX: number,
+  wantY: number,
+  threshold: number,
+): { x: number; y: number; guides: GuideLine[] } {
+  const { doc } = useEditor.getState();
+  const w = start.width;
+  const h = start.height;
+
+  // Candidate vertical lines (X positions): canvas L/CX/R + each other layer's L/CX/R.
+  const vCandidates: { pos: number; ext: [number, number] }[] = [
+    { pos: 0, ext: [0, doc.heightPx] },
+    { pos: doc.widthPx / 2, ext: [0, doc.heightPx] },
+    { pos: doc.widthPx, ext: [0, doc.heightPx] },
+  ];
+  const hCandidates: { pos: number; ext: [number, number] }[] = [
+    { pos: 0, ext: [0, doc.widthPx] },
+    { pos: doc.heightPx / 2, ext: [0, doc.widthPx] },
+    { pos: doc.heightPx, ext: [0, doc.widthPx] },
+  ];
+  for (const l of doc.layers) {
+    if (l.id === start.id) continue;
+    const l1 = l.x;
+    const l2 = l.x + l.width;
+    const lc = l.x + l.width / 2;
+    const t1 = l.y;
+    const t2 = l.y + l.height;
+    const tc = l.y + l.height / 2;
+    vCandidates.push({ pos: l1, ext: [t1, t2] });
+    vCandidates.push({ pos: lc, ext: [t1, t2] });
+    vCandidates.push({ pos: l2, ext: [t1, t2] });
+    hCandidates.push({ pos: t1, ext: [l1, l2] });
+    hCandidates.push({ pos: tc, ext: [l1, l2] });
+    hCandidates.push({ pos: t2, ext: [l1, l2] });
+  }
+
+  // For X: try snapping the layer's left, center, right to each candidate.
+  let bestDx = Infinity;
+  let bestX = wantX;
+  let bestVPos: number | null = null;
+  let bestVExt: [number, number] = [0, 0];
+  for (const c of vCandidates) {
+    for (const off of [0, w / 2, w]) {
+      const d = c.pos - (wantX + off);
+      if (Math.abs(d) < Math.abs(bestDx)) {
+        bestDx = d;
+        bestX = wantX + d;
+        bestVPos = c.pos;
+        bestVExt = c.ext;
+      }
+    }
+  }
+  let bestDy = Infinity;
+  let bestY = wantY;
+  let bestHPos: number | null = null;
+  let bestHExt: [number, number] = [0, 0];
+  for (const c of hCandidates) {
+    for (const off of [0, h / 2, h]) {
+      const d = c.pos - (wantY + off);
+      if (Math.abs(d) < Math.abs(bestDy)) {
+        bestDy = d;
+        bestY = wantY + d;
+        bestHPos = c.pos;
+        bestHExt = c.ext;
+      }
+    }
+  }
+
+  const guides: GuideLine[] = [];
+  const finalX = Math.abs(bestDx) <= threshold ? bestX : wantX;
+  const finalY = Math.abs(bestDy) <= threshold ? bestY : wantY;
+  if (Math.abs(bestDx) <= threshold && bestVPos != null) {
+    const top = Math.min(bestVExt[0], finalY);
+    const bot = Math.max(bestVExt[1], finalY + h);
+    guides.push({ axis: 'v', pos: bestVPos, start: top, end: bot });
+  }
+  if (Math.abs(bestDy) <= threshold && bestHPos != null) {
+    const left = Math.min(bestHExt[0], finalX);
+    const right = Math.max(bestHExt[1], finalX + w);
+    guides.push({ axis: 'h', pos: bestHPos, start: left, end: right });
+  }
+  return { x: finalX, y: finalY, guides };
+}
+
+/**
  * Full-page Pixi canvas. Owns the PixiScene + TransformOverlay and bridges
  * pointer/wheel/keyboard input into the editor store.
  */
@@ -25,6 +116,7 @@ export function PixiStage() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<PixiScene | null>(null);
   const overlayRef = useRef<TransformOverlay | null>(null);
+  const guidesRef = useRef<SnapGuides | null>(null);
   const appRef = useRef<Application | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -49,9 +141,12 @@ export function PixiStage() {
       host.appendChild(app.canvas);
       const scene = new PixiScene(app);
       const overlay = new TransformOverlay();
+      const guides = new SnapGuides();
       scene.overlayRoot.addChild(overlay.container);
+      scene.overlayRoot.addChild(guides.container);
       sceneRef.current = scene;
       overlayRef.current = overlay;
+      guidesRef.current = guides;
       appRef.current = app;
 
       // Initial sync
@@ -253,10 +348,29 @@ export function PixiStage() {
     const dy = pt.y - drag.startY;
 
     if (handle === 'move') {
+      const wantX = layerStart.x + dx;
+      const wantY = layerStart.y + dy;
+      // Smart-guide snapping (suppressed when Alt is held).
+      let nx = wantX;
+      let ny = wantY;
+      const guideLines: GuideLine[] = [];
+      if (!e.altKey) {
+        const snap = computeSnap(
+          layerStart,
+          wantX,
+          wantY,
+          6 / Math.max(0.001, useEditor.getState().view.zoom),
+        );
+        nx = snap.x;
+        ny = snap.y;
+        guideLines.push(...snap.guides);
+      }
       useEditor.getState().updateLayer(layerStart.id, {
-        x: layerStart.x + dx,
-        y: layerStart.y + dy,
+        x: nx,
+        y: ny,
       } as Partial<Layer>);
+      const view = useEditor.getState().view;
+      guidesRef.current?.draw(guideLines, 1 / view.zoom);
       return;
     }
 
@@ -346,6 +460,7 @@ export function PixiStage() {
     }
     dragRef.current = null;
     panningRef.current = null;
+    guidesRef.current?.hide();
   };
 
   const onWheel = (e: React.WheelEvent) => {

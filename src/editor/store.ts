@@ -48,6 +48,11 @@ interface EditorState {
   removeLayer: (id: string) => void;
   duplicateLayer: (id: string) => void;
   reorderLayer: (id: string, delta: number) => void;
+  /**
+   * Move a layer to an absolute target index in the bottom-up `doc.layers`
+   * array (0 = back-most). Used by drag-to-reorder in the Layers panel.
+   */
+  moveLayerToIndex: (id: string, targetIndex: number) => void;
   selectLayer: (id: string | null) => void;
 
   // effects
@@ -281,6 +286,22 @@ export const useEditor = create<EditorState>()(
           if (target === idx) return d;
           const [item] = next.splice(idx, 1);
           next.splice(target, 0, item);
+          return { ...d, layers: next };
+        }),
+
+      moveLayerToIndex: (id, targetIndex) =>
+        recordAnd((d) => {
+          const idx = d.layers.findIndex((l) => l.id === id);
+          if (idx < 0) return d;
+          const next = [...d.layers];
+          const [item] = next.splice(idx, 1);
+          // After removal, clamp target into remaining range.
+          const t = Math.max(
+            0,
+            Math.min(next.length, targetIndex > idx ? targetIndex - 1 : targetIndex),
+          );
+          if (t === idx) return d;
+          next.splice(t, 0, item);
           return { ...d, layers: next };
         }),
 
