@@ -340,9 +340,6 @@ function LayerRow(props: {
       >
         ⋮⋮
       </span>
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-black/40 bg-panel/80 text-zinc-300">
-        ☰
-      </span>
       <button
         onClick={(e) => {
           e.stopPropagation();
