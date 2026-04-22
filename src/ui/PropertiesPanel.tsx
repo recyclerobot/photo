@@ -1,5 +1,26 @@
 import { useEditor } from '../editor/store';
-import type { Layer, TextLayer } from '../editor/types';
+import type { Layer, ShapeLayer, TextLayer } from '../editor/types';
+
+const FONT_FAMILIES = [
+  'Inter',
+  'system-ui',
+  'Arial',
+  'Helvetica',
+  'Helvetica Neue',
+  'Times New Roman',
+  'Georgia',
+  'Courier New',
+  'Menlo',
+  'Monaco',
+  'Verdana',
+  'Tahoma',
+  'Trebuchet MS',
+  'Comic Sans MS',
+  'Impact',
+  'Lucida Console',
+  'Palatino',
+  'Garamond',
+];
 
 export function PropertiesPanel() {
   const layer = useEditor((s) => s.doc.layers.find((l) => l.id === s.selectedLayerId));
@@ -36,6 +57,73 @@ export function PropertiesPanel() {
       </Row>
 
       {layer.type === 'text' && <TextProps layer={layer as TextLayer} />}
+      {layer.type === 'shape' && <ShapeProps layer={layer as ShapeLayer} />}
+    </div>
+  );
+}
+
+function ShapeProps({ layer }: { layer: ShapeLayer }) {
+  const update = useEditor((s) => s.updateLayer);
+  const set = (patch: Partial<ShapeLayer>) => update(layer.id, patch as Partial<Layer>);
+  const fillEnabled = layer.fillColor !== null;
+  const strokeEnabled = layer.strokeColor !== null;
+  return (
+    <div className="mt-2 flex flex-col gap-2 border-t border-black/30 pt-2">
+      <Row label="Shape">
+        <select
+          value={layer.shape}
+          onChange={(e) => set({ shape: e.target.value as ShapeLayer['shape'] })}
+          className="w-full rounded bg-panel-2 px-1 py-1 text-zinc-200 outline-none"
+        >
+          <option value="rectangle">Rectangle</option>
+          <option value="ellipse">Ellipse</option>
+          <option value="triangle">Triangle</option>
+          <option value="line">Line</option>
+          <option value="empty">Empty</option>
+        </select>
+      </Row>
+      <Row label="Fill">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={fillEnabled}
+            onChange={(e) => set({ fillColor: e.target.checked ? '#5865f2' : null })}
+            disabled={layer.shape === 'line' || layer.shape === 'empty'}
+          />
+          <input
+            type="color"
+            value={layer.fillColor ?? '#5865f2'}
+            disabled={!fillEnabled}
+            onChange={(e) => set({ fillColor: e.target.value })}
+            className="h-6 w-12 cursor-pointer rounded border border-black/30 bg-transparent disabled:opacity-40"
+          />
+        </div>
+      </Row>
+      <Row label="Stroke">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={strokeEnabled}
+            onChange={(e) => set({ strokeColor: e.target.checked ? '#ffffff' : null })}
+            disabled={layer.shape === 'empty'}
+          />
+          <input
+            type="color"
+            value={layer.strokeColor ?? '#ffffff'}
+            disabled={!strokeEnabled}
+            onChange={(e) => set({ strokeColor: e.target.value })}
+            className="h-6 w-12 cursor-pointer rounded border border-black/30 bg-transparent disabled:opacity-40"
+          />
+        </div>
+      </Row>
+      <Row label="Stroke W">
+        <Num value={layer.strokeWidth} onChange={(v) => set({ strokeWidth: Math.max(0, v) })} />
+      </Row>
+      {layer.shape === 'rectangle' && (
+        <Row label="Radius">
+          <Num value={layer.cornerRadius} onChange={(v) => set({ cornerRadius: Math.max(0, v) })} />
+        </Row>
+      )}
     </div>
   );
 }
@@ -54,10 +142,16 @@ function TextProps({ layer }: { layer: TextLayer }) {
       </Row>
       <Row label="Font">
         <input
+          list="font-family-options"
           value={layer.fontFamily}
           onChange={(e) => set({ fontFamily: e.target.value })}
           className="w-full rounded bg-panel-2 px-1.5 py-1 text-zinc-200 outline-none"
         />
+        <datalist id="font-family-options">
+          {FONT_FAMILIES.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
       </Row>
       <Row label="Size">
         <Num value={layer.fontSize} onChange={(v) => set({ fontSize: Math.max(1, v) })} />

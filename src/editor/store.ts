@@ -6,11 +6,14 @@ import type {
   EffectKind,
   ImageLayer,
   Layer,
+  ShapeKind,
+  ShapeLayer,
   TextLayer,
   ViewState,
 } from './types';
 import { DEFAULT_DOC } from './types';
 import { defaultEffectFor } from './effects';
+import { measureText } from './text';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -39,6 +42,8 @@ interface EditorState {
     name?: string,
   ) => string;
   addTextLayer: (text?: string) => string;
+  addShapeLayer: (shape: ShapeKind) => string;
+  addEmptyLayer: () => string;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   removeLayer: (id: string) => void;
   duplicateLayer: (id: string) => void;
@@ -152,20 +157,26 @@ export const useEditor = create<EditorState>()(
       addTextLayer: (text = 'Text') => {
         const id = uid();
         const { doc } = get();
+        const fontFamily = 'Inter, system-ui, sans-serif';
+        const fontSize = 64;
+        const fontWeight = 600;
+        const measured = measureText(text, fontFamily, fontSize, fontWeight);
+        const w = Math.max(20, measured.width);
+        const h = Math.max(20, measured.height);
         const layer: TextLayer = {
           id,
           name: 'Text',
           type: 'text',
           text,
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: 64,
-          fontWeight: 600,
+          fontFamily,
+          fontSize,
+          fontWeight,
           color: '#ffffff',
           align: 'left',
-          x: doc.widthPx / 2 - 100,
-          y: doc.heightPx / 2 - 40,
-          width: 400,
-          height: 80,
+          x: doc.widthPx / 2 - w / 2,
+          y: doc.heightPx / 2 - h / 2,
+          width: w,
+          height: h,
           rotation: 0,
           opacity: 1,
           visible: true,
@@ -178,10 +189,58 @@ export const useEditor = create<EditorState>()(
         return id;
       },
 
+      addShapeLayer: (shape) => {
+        const id = uid();
+        const { doc } = get();
+        const w = shape === 'line' ? Math.min(400, doc.widthPx * 0.5) : 240;
+        const h = shape === 'line' ? 4 : 240;
+        const layer: ShapeLayer = {
+          id,
+          name: shape === 'empty' ? 'Empty' : shape[0].toUpperCase() + shape.slice(1),
+          type: 'shape',
+          shape,
+          fillColor: shape === 'empty' || shape === 'line' ? null : '#5865f2',
+          strokeColor: shape === 'line' ? '#ffffff' : null,
+          strokeWidth: shape === 'line' ? 4 : 0,
+          cornerRadius: 0,
+          x: (doc.widthPx - w) / 2,
+          y: (doc.heightPx - h) / 2,
+          width: w,
+          height: h,
+          rotation: 0,
+          opacity: 1,
+          visible: true,
+          locked: false,
+          blendMode: 'normal',
+          effects: [],
+        };
+        recordAnd((d) => ({ ...d, layers: [...d.layers, layer] }));
+        set({ selectedLayerId: id });
+        return id;
+      },
+
+      addEmptyLayer: () => get().addShapeLayer('empty'),
+
       updateLayer: (id, patch) =>
         recordAnd((d) => ({
           ...d,
-          layers: d.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)),
+          layers: d.layers.map((l) => {
+            if (l.id !== id) return l;
+            const merged = { ...l, ...patch } as Layer;
+            // Text layers auto-size to their measured glyph bounds so the
+            // bounding box always matches the rendered text and never squashes.
+            if (merged.type === 'text') {
+              const m = measureText(
+                merged.text,
+                merged.fontFamily,
+                merged.fontSize,
+                merged.fontWeight,
+              );
+              merged.width = m.width;
+              merged.height = m.height;
+            }
+            return merged;
+          }),
         })),
 
       removeLayer: (id) => {

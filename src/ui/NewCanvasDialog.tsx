@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useEditor } from '../editor/store';
+import { useLibrary } from '../library/libraryStore';
 import { Modal } from './Modal';
 
 export function NewCanvasDialog({ onClose }: { onClose: () => void }) {
@@ -15,6 +16,9 @@ export function NewCanvasDialog({ onClose }: { onClose: () => void }) {
       Math.max(1, Math.round(height)),
       transparent ? null : bg,
     );
+    // Register a fresh library entry for the new canvas so subsequent edits
+    // don't overwrite the previously-active design.
+    useLibrary.getState().createNew(useEditor.getState().doc);
     onClose();
   };
 

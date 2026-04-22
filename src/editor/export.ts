@@ -43,10 +43,20 @@ export async function exportPng(opts: ExportOptions): Promise<void> {
 export async function importImageFiles(files: FileList | File[]): Promise<void> {
   const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
   for (const file of arr) {
-    const url = URL.createObjectURL(file);
+    // Use data URLs so the image survives reload (blob: URLs are session-scoped).
+    const url = await readFileAsDataURL(file);
     const dims = await readImageDimensions(url);
     useEditor.getState().addImageLayer(url, dims.width, dims.height, file.name);
   }
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
 }
 
 function readImageDimensions(url: string): Promise<{ width: number; height: number }> {

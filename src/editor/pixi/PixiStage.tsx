@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Application } from 'pixi.js';
 import { useEditor } from '../store';
 import { PixiScene } from './PixiScene';
 import { TransformOverlay, type HandleId } from './transformOverlay';
 import { setActiveScene, clearActiveScene } from './sceneRef';
-import type { Layer } from '../types';
+import { measureText } from '../text';
+import type { Layer, TextLayer } from '../types';
 
 interface DragState {
   startX: number;
@@ -25,6 +26,7 @@ export function PixiStage() {
   const sceneRef = useRef<PixiScene | null>(null);
   const overlayRef = useRef<TransformOverlay | null>(null);
   const appRef = useRef<Application | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Mount Pixi once.
   useEffect(() => {
@@ -274,12 +276,36 @@ export function PixiStage() {
     const s = Math.sin(-layerStart.rotation);
     const ldx = dx * c - dy * s;
     const ldy = dx * s + dy * c;
+    const horiz = handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0;
+    const vert = handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0;
+
+    // Text layers: change fontSize proportionally instead of stretching.
+    if (layerStart.type === 'text') {
+      const tl = layerStart as TextLayer;
+      const sX =
+        horiz === 0 ? 1 : Math.max(0.05, (layerStart.width + horiz * ldx) / layerStart.width);
+      const sY =
+        vert === 0 ? 1 : Math.max(0.05, (layerStart.height + vert * ldy) / layerStart.height);
+      const factor = horiz === 0 ? sY : vert === 0 ? sX : Math.max(sX, sY);
+      const newFontSize = Math.max(4, Math.round(tl.fontSize * factor));
+      const m = measureText(tl.text, tl.fontFamily, newFontSize, tl.fontWeight);
+      // Anchor: keep the opposite handle corner stationary.
+      const ax = horiz === 1 ? 0 : horiz === -1 ? 1 : 0.5;
+      const ay = vert === 1 ? 0 : vert === -1 ? 1 : 0.5;
+      const anchorDocX = layerStart.x + ax * layerStart.width;
+      const anchorDocY = layerStart.y + ay * layerStart.height;
+      useEditor.getState().updateLayer(layerStart.id, {
+        fontSize: newFontSize,
+        x: anchorDocX - ax * m.width,
+        y: anchorDocY - ay * m.height,
+      } as Partial<Layer>);
+      return;
+    }
+
     let nx = layerStart.x;
     let ny = layerStart.y;
     let nw = layerStart.width;
     let nh = layerStart.height;
-    const horiz = handle.includes('e') ? 1 : handle.includes('w') ? -1 : 0;
-    const vert = handle.includes('s') ? 1 : handle.includes('n') ? -1 : 0;
 
     if (horiz === 1) nw = Math.max(8, layerStart.width + ldx);
     if (horiz === -1) {
@@ -357,6 +383,27 @@ export function PixiStage() {
     return () => clearActiveScene();
   }, []);
 
+  // Sync editing state into the scene so the Pixi text node hides while
+  // the HTML <textarea> overlay is being edited.
+  useEffect(() => {
+    sceneRef.current?.setEditingId(editingId);
+  }, [editingId]);
+
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-ui-overlay]')) return;
+    const pt = clientToDoc(e.clientX, e.clientY);
+    if (!pt) return;
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const hit = scene.hitTestDocPoint(pt.x, pt.y);
+    if (!hit) return;
+    const layer = useEditor.getState().doc.layers.find((l) => l.id === hit);
+    if (layer && layer.type === 'text') {
+      useEditor.getState().selectLayer(hit);
+      setEditingId(hit);
+    }
+  };
+
   return (
     <div
       ref={hostRef}
@@ -365,8 +412,104 @@ export function PixiStage() {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDoubleClick={onDoubleClick}
       onWheel={onWheel}
       style={{ touchAction: 'none', cursor: spaceDownRef.current ? 'grab' : 'default' }}
+    >
+      {editingId && hostRef.current && (
+        <TextEditorOverlay
+          layerId={editingId}
+          host={hostRef.current}
+          onCommit={() => setEditingId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * HTML <textarea> overlay positioned to match a text layer's screen rect.
+ * Auto-grows as the user types because the underlying layer auto-sizes.
+ * Commits on Enter (without Shift), Escape, or blur.
+ */
+function TextEditorOverlay({
+  layerId,
+  host,
+  onCommit,
+}: {
+  layerId: string;
+  host: HTMLDivElement;
+  onCommit: () => void;
+}) {
+  const layer = useEditor((s) => s.doc.layers.find((l) => l.id === layerId));
+  const view = useEditor((s) => s.view);
+  const updateLayer = useEditor((s) => s.updateLayer);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.focus();
+    ta.select();
+  }, []);
+
+  if (!layer || layer.type !== 'text') return null;
+  const tl = layer as TextLayer;
+
+  const hostRect = host.getBoundingClientRect();
+  const screenW = hostRect.width;
+  const screenH = hostRect.height;
+  // Same math as PixiScene.setView: worldX = screenW/2 - docW*zoom/2 + panX
+  const scene = (window as any).__pixiScene?.() as PixiScene | undefined;
+  const sceneDocW = scene ? (scene as any).currentDocSize.w : tl.width;
+  const sceneDocH = scene ? (scene as any).currentDocSize.h : tl.height;
+  const worldX = screenW / 2 - (sceneDocW * view.zoom) / 2 + view.panX;
+  const worldY = screenH / 2 - (sceneDocH * view.zoom) / 2 + view.panY;
+  const left = worldX + tl.x * view.zoom;
+  const top = worldY + tl.y * view.zoom;
+
+  return (
+    <textarea
+      ref={taRef}
+      data-ui-overlay
+      value={tl.text}
+      onChange={(e) => updateLayer(tl.id, { text: e.target.value } as Partial<Layer>)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) {
+          e.preventDefault();
+          onCommit();
+        }
+      }}
+      onBlur={onCommit}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+      spellCheck={false}
+      style={{
+        position: 'absolute',
+        left: `${left}px`,
+        top: `${top}px`,
+        width: `${Math.max(20, tl.width * view.zoom)}px`,
+        height: `${Math.max(20, tl.height * view.zoom)}px`,
+        transformOrigin: '50% 50%',
+        transform: `rotate(${tl.rotation}rad)`,
+        font: `${tl.fontWeight} ${tl.fontSize * view.zoom}px ${tl.fontFamily}`,
+        lineHeight: 1.25,
+        color: tl.color,
+        background: 'transparent',
+        textAlign: tl.align,
+        border: '1px dashed #5865f2',
+        outline: 'none',
+        padding: 0,
+        margin: 0,
+        resize: 'none',
+        overflow: 'hidden',
+        whiteSpace: 'pre',
+        boxSizing: 'content-box',
+        opacity: tl.opacity,
+        caretColor: tl.color,
+        zIndex: 30,
+      }}
     />
   );
 }

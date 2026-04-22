@@ -1,7 +1,15 @@
 import { useEditor } from '../editor/store';
-import type { BlendMode, Layer } from '../editor/types';
+import { importImageFiles } from '../editor/export';
+import type { BlendMode, Layer, ShapeKind } from '../editor/types';
 
 const BLENDS: BlendMode[] = ['normal', 'add', 'multiply', 'screen', 'overlay', 'darken', 'lighten'];
+
+const SHAPE_OPTIONS: { kind: ShapeKind; label: string }[] = [
+  { kind: 'rectangle', label: 'Rectangle' },
+  { kind: 'ellipse', label: 'Ellipse' },
+  { kind: 'triangle', label: 'Triangle' },
+  { kind: 'line', label: 'Line' },
+];
 
 export function LayersPanel() {
   const layers = useEditor((s) => s.doc.layers);
@@ -10,33 +18,99 @@ export function LayersPanel() {
   const update = useEditor((s) => s.updateLayer);
   const remove = useEditor((s) => s.removeLayer);
   const reorder = useEditor((s) => s.reorderLayer);
-
-  if (layers.length === 0) {
-    return <div className="px-1 py-2 text-zinc-500">No layers yet. Drop an image or add text.</div>;
-  }
+  const addText = useEditor((s) => s.addTextLayer);
+  const addEmpty = useEditor((s) => s.addEmptyLayer);
+  const addShape = useEditor((s) => s.addShapeLayer);
 
   // Render top-most layer first.
   const ordered = [...layers].reverse();
 
+  const onImportClick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.multiple = true;
+    inp.onchange = () => inp.files && importImageFiles(inp.files);
+    inp.click();
+  };
+
   return (
-    <div className="flex flex-col gap-1">
-      {ordered.map((l) => (
-        <Row
-          key={l.id}
-          layer={l}
-          isSelected={selected === l.id}
-          onSelect={() => select(l.id)}
-          onToggleVisible={() => update(l.id, { visible: !l.visible } as Partial<Layer>)}
-          onToggleLock={() => update(l.id, { locked: !l.locked } as Partial<Layer>)}
-          onRename={(name) => update(l.id, { name } as Partial<Layer>)}
-          onOpacity={(v) => update(l.id, { opacity: v } as Partial<Layer>)}
-          onBlend={(b) => update(l.id, { blendMode: b } as Partial<Layer>)}
-          onUp={() => reorder(l.id, 1)}
-          onDown={() => reorder(l.id, -1)}
-          onDelete={() => remove(l.id)}
-        />
-      ))}
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
+        {ordered.length === 0 ? (
+          <div className="px-1 py-2 text-zinc-500">
+            No layers yet. Use the buttons below to add one.
+          </div>
+        ) : (
+          ordered.map((l) => (
+            <Row
+              key={l.id}
+              layer={l}
+              isSelected={selected === l.id}
+              onSelect={() => select(l.id)}
+              onToggleVisible={() => update(l.id, { visible: !l.visible } as Partial<Layer>)}
+              onToggleLock={() => update(l.id, { locked: !l.locked } as Partial<Layer>)}
+              onRename={(name) => update(l.id, { name } as Partial<Layer>)}
+              onOpacity={(v) => update(l.id, { opacity: v } as Partial<Layer>)}
+              onBlend={(b) => update(l.id, { blendMode: b } as Partial<Layer>)}
+              onUp={() => reorder(l.id, 1)}
+              onDown={() => reorder(l.id, -1)}
+              onDelete={() => remove(l.id)}
+            />
+          ))
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1 border-t border-black/30 pt-2">
+        <AddBtn title="New empty layer" onClick={() => addEmpty()}>
+          ＋ Empty
+        </AddBtn>
+        <AddBtn title="New text layer" onClick={() => addText()}>
+          ＋ Text
+        </AddBtn>
+        <AddBtn title="Import image" onClick={onImportClick}>
+          ＋ Image
+        </AddBtn>
+        <select
+          onChange={(e) => {
+            const v = e.target.value as ShapeKind | '';
+            if (v) addShape(v);
+            e.target.value = '';
+          }}
+          defaultValue=""
+          title="New shape"
+          className="rounded bg-panel-2 px-2 py-1 text-zinc-200 outline-none hover:bg-panel-3"
+        >
+          <option value="" disabled>
+            ＋ Shape
+          </option>
+          {SHAPE_OPTIONS.map((s) => (
+            <option key={s.kind} value={s.kind}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
+  );
+}
+
+function AddBtn({
+  children,
+  onClick,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="rounded bg-panel-2 px-2 py-1 text-zinc-200 hover:bg-panel-3"
+    >
+      {children}
+    </button>
   );
 }
 

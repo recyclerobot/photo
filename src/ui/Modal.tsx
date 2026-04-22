@@ -3,10 +3,12 @@ import { useEffect } from 'react';
 export function Modal({
   title,
   onClose,
+  width = 380,
   children,
 }: {
   title: string;
   onClose: () => void;
+  width?: number;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -25,7 +27,10 @@ export function Modal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-[380px] overflow-hidden rounded-lg border border-black/40 bg-panel shadow-2xl">
+      <div
+        className="overflow-hidden rounded-lg border border-black/40 bg-panel shadow-2xl"
+        style={{ width, maxWidth: 'calc(100vw - 2rem)' }}
+      >
         <div className="flex items-center justify-between border-b border-black/40 bg-panel-2 px-3 py-2">
           <div className="text-sm font-semibold text-zinc-200">{title}</div>
           <button onClick={onClose} className="rounded px-2 py-0.5 text-zinc-400 hover:bg-panel-3">

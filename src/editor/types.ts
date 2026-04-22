@@ -41,7 +41,7 @@ export type Effect =
 export interface BaseLayer {
   id: string;
   name: string;
-  type: 'image' | 'text';
+  type: 'image' | 'text' | 'shape';
   x: number;
   y: number;
   width: number;
@@ -52,6 +52,20 @@ export interface BaseLayer {
   locked: boolean;
   blendMode: BlendMode;
   effects: Effect[];
+}
+
+export type ShapeKind = 'rectangle' | 'ellipse' | 'triangle' | 'line' | 'empty';
+
+export interface ShapeLayer extends BaseLayer {
+  type: 'shape';
+  shape: ShapeKind;
+  /** null = no fill */
+  fillColor: string | null;
+  /** null = no stroke */
+  strokeColor: string | null;
+  strokeWidth: number;
+  /** Corner radius for rectangles (px). */
+  cornerRadius: number;
 }
 
 export interface ImageLayer extends BaseLayer {
@@ -73,7 +87,7 @@ export interface TextLayer extends BaseLayer {
   align: 'left' | 'center' | 'right';
 }
 
-export type Layer = ImageLayer | TextLayer;
+export type Layer = ImageLayer | TextLayer | ShapeLayer;
 
 export interface CanvasDoc {
   widthPx: number;

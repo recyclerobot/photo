@@ -9,13 +9,15 @@ import {
   Rectangle,
   type ContainerChild,
 } from 'pixi.js';
-import type { CanvasDoc, Layer, ImageLayer, TextLayer } from '../types';
+import type { CanvasDoc, Layer, ImageLayer, ShapeLayer, TextLayer } from '../types';
 import { buildFilters } from './filters';
 
 interface LayerNode {
   layer: Layer;
-  display: Sprite | Text;
+  display: Sprite | Text | Graphics;
   textureKey?: string; // for image layers, the src we loaded
+  /** Last shape signature, to know when to redraw the Graphics. */
+  shapeSig?: string;
 }
 
 /**
@@ -40,6 +42,22 @@ export class PixiScene {
   private nodes = new Map<string, LayerNode>();
   private currentDocSize = { w: 0, h: 0 };
   private currentBg: string | null = null;
+  private editingId: string | null = null;
+
+  /** Hide the Pixi text node for a layer being edited via HTML overlay. */
+  setEditingId(id: string | null) {
+    if (this.editingId === id) return;
+    const prev = this.editingId;
+    this.editingId = id;
+    if (prev) {
+      const n = this.nodes.get(prev);
+      if (n) n.display.visible = n.layer.visible;
+    }
+    if (id) {
+      const n = this.nodes.get(id);
+      if (n) n.display.visible = false;
+    }
+  }
 
   constructor(app: Application) {
     this.app = app;
@@ -134,16 +152,30 @@ export class PixiScene {
       const tex = await this.loadTexture(layer.src);
       const s = new Sprite(tex);
       s.eventMode = 'static';
-      this.applyCommon(s, layer);
-      return { layer, display: s, textureKey: layer.src };
+      s.anchor.set(0.5);
+      const node: LayerNode = { layer, display: s, textureKey: layer.src };
+      this.applyCommon(node, layer);
+      return node;
     }
+    if (layer.type === 'shape') {
+      const g = new Graphics();
+      g.eventMode = 'static';
+      g.pivot.set(0.5, 0.5);
+      const node: LayerNode = { layer, display: g };
+      this.applyCommon(node, layer);
+      return node;
+    }
+    // text
+    const tl = layer as TextLayer;
     const t = new Text({
-      text: (layer as TextLayer).text,
-      style: this.textStyleFor(layer as TextLayer),
+      text: tl.text,
+      style: this.textStyleFor(tl),
     });
     t.eventMode = 'static';
-    this.applyCommon(t, layer);
-    return { layer, display: t };
+    t.anchor.set(0.5);
+    const node: LayerNode = { layer, display: t };
+    this.applyCommon(node, layer);
+    return node;
   }
 
   private async updateNode(node: LayerNode, layer: Layer) {
@@ -156,30 +188,84 @@ export class PixiScene {
       }
     } else if (layer.type === 'text' && node.display instanceof Text) {
       const tl = layer as TextLayer;
-      if (node.display.text !== tl.text) node.display.text = tl.text;
-      node.display.style = this.textStyleFor(tl) as any;
+      const prev = node.layer as TextLayer;
+      const styleChanged =
+        prev.text !== tl.text ||
+        prev.fontFamily !== tl.fontFamily ||
+        prev.fontSize !== tl.fontSize ||
+        prev.fontWeight !== tl.fontWeight ||
+        prev.color !== tl.color ||
+        prev.align !== tl.align;
+      if (styleChanged) {
+        if (node.display.text !== tl.text) node.display.text = tl.text;
+        node.display.style = this.textStyleFor(tl) as any;
+      }
     }
-    this.applyCommon(node.display, layer);
+    this.applyCommon(node, layer);
     node.layer = layer;
   }
 
-  private applyCommon(d: Sprite | Text, layer: Layer) {
+  private applyCommon(node: LayerNode, layer: Layer) {
+    const d = node.display;
     d.position.set(layer.x + layer.width / 2, layer.y + layer.height / 2);
-    d.anchor?.set(0.5);
+    d.rotation = layer.rotation;
+    d.alpha = layer.opacity;
+    d.visible = layer.visible && this.editingId !== layer.id;
+    (d as any).blendMode = layer.blendMode;
+    d.filters = buildFilters(layer.effects) as any;
+
     if (d instanceof Sprite) {
       d.width = layer.width;
       d.height = layer.height;
-    } else {
-      // Text: scale to match width/height
-      const naturalW = (d as Text).width || 1;
-      const naturalH = (d as Text).height || 1;
-      d.scale.set(layer.width / naturalW, layer.height / naturalH);
+    } else if (d instanceof Text) {
+      // Always render text at its natural size — never stretch glyphs.
+      // Layer width/height are kept in sync with measurement by the store.
+      d.scale.set(1, 1);
+    } else if (d instanceof Graphics) {
+      this.drawShape(node, d, layer as ShapeLayer);
     }
-    d.rotation = layer.rotation;
-    d.alpha = layer.opacity;
-    d.visible = layer.visible;
-    (d as any).blendMode = layer.blendMode;
-    d.filters = buildFilters(layer.effects) as any;
+  }
+
+  private drawShape(node: LayerNode, g: Graphics, layer: ShapeLayer) {
+    const sig = `${layer.shape}|${layer.width}|${layer.height}|${layer.fillColor}|${layer.strokeColor}|${layer.strokeWidth}|${layer.cornerRadius}`;
+    if (node.shapeSig === sig) return;
+    node.shapeSig = sig;
+
+    g.clear();
+    const w = layer.width;
+    const h = layer.height;
+    // Draw centered around (0,0) so position == layer center.
+    const hw = w / 2;
+    const hh = h / 2;
+
+    switch (layer.shape) {
+      case 'rectangle':
+        if (layer.cornerRadius > 0) {
+          g.roundRect(-hw, -hh, w, h, layer.cornerRadius);
+        } else {
+          g.rect(-hw, -hh, w, h);
+        }
+        break;
+      case 'ellipse':
+        g.ellipse(0, 0, hw, hh);
+        break;
+      case 'triangle':
+        g.poly([0, -hh, hw, hh, -hw, hh]);
+        break;
+      case 'line':
+        g.moveTo(-hw, 0).lineTo(hw, 0);
+        break;
+      case 'empty':
+        // No geometry — invisible but selectable via overlay.
+        return;
+    }
+
+    if (layer.fillColor && layer.shape !== 'line') {
+      g.fill(layer.fillColor);
+    }
+    if (layer.strokeColor && layer.strokeWidth > 0) {
+      g.stroke({ color: layer.strokeColor, width: layer.strokeWidth, alignment: 0.5 });
+    }
   }
 
   private textStyleFor(layer: TextLayer) {

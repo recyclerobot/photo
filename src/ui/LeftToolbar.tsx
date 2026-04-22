@@ -12,7 +12,7 @@ export function LeftToolbar() {
     inp.click();
   };
   return (
-    <div className="pointer-events-auto absolute left-2 top-12 flex flex-col gap-1 rounded-lg border border-black/40 bg-panel/90 p-1 text-xs backdrop-blur">
+    <div className="pointer-events-auto absolute left-2 top-12 z-10 flex flex-col gap-1 rounded-lg border border-black/40 bg-panel/90 p-1 text-xs backdrop-blur">
       <ToolBtn label="Add text layer (T)" onClick={() => addText()}>
         T
       </ToolBtn>
