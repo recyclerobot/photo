@@ -1,5 +1,10 @@
 import { BlurFilter, ColorMatrixFilter, NoiseFilter, type Filter } from 'pixi.js';
-import { DropShadowFilter, ConvolutionFilter, PixelateFilter } from 'pixi-filters';
+import {
+  DropShadowFilter,
+  ConvolutionFilter,
+  PixelateFilter,
+  AdjustmentFilter,
+} from 'pixi-filters';
 import type { Effect } from '../types';
 
 const hexToRgb = (hex: string): [number, number, number] => {
@@ -58,6 +63,86 @@ function filterFor(eff: Effect): Filter | Filter[] | null {
       cm.hue(eff.params.hue, false);
       cm.saturate(eff.params.saturation, true);
       cm.brightness(1 + eff.params.lightness, true);
+      return cm;
+    }
+    case 'saturation': {
+      // amount in -1..1 maps to saturation 0..2 (0 = grayscale, 1 = unchanged, 2 = boosted)
+      return new AdjustmentFilter({ saturation: 1 + eff.params.amount });
+    }
+    case 'colorBalance': {
+      // Each axis in -1..1. Positive cyanRed boosts red, negative boosts cyan (reduces red).
+      // Implemented as RGB channel multipliers via AdjustmentFilter.
+      const k = 0.5;
+      return new AdjustmentFilter({
+        red: Math.max(0, 1 + k * eff.params.cyanRed),
+        green: Math.max(0, 1 + k * eff.params.magentaGreen),
+        blue: Math.max(0, 1 + k * eff.params.yellowBlue),
+      });
+    }
+    case 'levels': {
+      // Compose: input remap -> gamma -> output remap.
+      const filters: Filter[] = [];
+      const iB = eff.params.inputBlack;
+      const iW = eff.params.inputWhite;
+      const oB = eff.params.outputBlack;
+      const oW = eff.params.outputWhite;
+
+      // Input remap: ((c - iB) / (iW - iB)).
+      const span = Math.max(1e-4, iW - iB);
+      const sIn = 1 / span;
+      const tIn = -iB * sIn;
+      if (sIn !== 1 || tIn !== 0) {
+        const cm = new ColorMatrixFilter();
+        cm.matrix = [sIn, 0, 0, 0, tIn, 0, sIn, 0, 0, tIn, 0, 0, sIn, 0, tIn, 0, 0, 0, 1, 0] as any;
+        filters.push(cm);
+      }
+
+      // Gamma (1/gamma in shader: AdjustmentFilter applies pow(color, 1/uGamma))
+      const g = Math.max(0.01, eff.params.gamma);
+      if (g !== 1) {
+        filters.push(new AdjustmentFilter({ gamma: g }));
+      }
+
+      // Output remap: oB + c * (oW - oB).
+      const sOut = oW - oB;
+      if (sOut !== 1 || oB !== 0) {
+        const cm = new ColorMatrixFilter();
+        cm.matrix = [sOut, 0, 0, 0, oB, 0, sOut, 0, 0, oB, 0, 0, sOut, 0, oB, 0, 0, 0, 1, 0] as any;
+        filters.push(cm);
+      }
+
+      return filters.length ? filters : null;
+    }
+    case 'blackAndWhite': {
+      // Channel mixer: gray = r*R + g*G + b*B; output = mix(rgb, gray, amount).
+      const r = eff.params.red;
+      const g = eff.params.green;
+      const b = eff.params.blue;
+      const a = Math.max(0, Math.min(1, eff.params.amount));
+      const ia = 1 - a;
+      const cm = new ColorMatrixFilter();
+      cm.matrix = [
+        ia + a * r,
+        a * g,
+        a * b,
+        0,
+        0,
+        a * r,
+        ia + a * g,
+        a * b,
+        0,
+        0,
+        a * r,
+        a * g,
+        ia + a * b,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+      ] as any;
       return cm;
     }
     case 'blur': {

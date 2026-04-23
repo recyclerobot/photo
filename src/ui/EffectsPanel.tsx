@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useEditor, flatObjects } from '../editor/store';
 import { ALL_EFFECT_KINDS, EFFECT_LABELS } from '../editor/effects';
 import type { Effect, EffectKind } from '../editor/types';
+import { LevelsGraph } from './LevelsGraph';
 
 export function EffectsPanel() {
   const obj = useEditor((s) => {
@@ -125,6 +126,130 @@ function EffectCard({
             max={1}
             step={0.01}
             onChange={(v) => setParam('lightness', v)}
+          />
+        </>
+      )}
+      {effect.kind === 'saturation' && (
+        <Slider
+          label="Amount"
+          value={effect.params.amount}
+          min={-1}
+          max={1}
+          step={0.01}
+          onChange={(v) => setParam('amount', v)}
+        />
+      )}
+      {effect.kind === 'colorBalance' && (
+        <>
+          <Slider
+            label="Cyan ↔ Red"
+            value={effect.params.cyanRed}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('cyanRed', v)}
+          />
+          <Slider
+            label="Mag. ↔ Green"
+            value={effect.params.magentaGreen}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('magentaGreen', v)}
+          />
+          <Slider
+            label="Yellow ↔ Blue"
+            value={effect.params.yellowBlue}
+            min={-1}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('yellowBlue', v)}
+          />
+        </>
+      )}
+      {effect.kind === 'levels' && (
+        <>
+          <LevelsGraph
+            params={effect.params}
+            onChange={(patch) =>
+              onChange({ params: { ...effect.params, ...patch } as any } as Partial<Effect>)
+            }
+          />
+          <Slider
+            label="In Black"
+            value={effect.params.inputBlack}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('inputBlack', Math.min(v, effect.params.inputWhite - 0.01))}
+          />
+          <Slider
+            label="In White"
+            value={effect.params.inputWhite}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('inputWhite', Math.max(v, effect.params.inputBlack + 0.01))}
+          />
+          <Slider
+            label="Gamma"
+            value={effect.params.gamma}
+            min={0.1}
+            max={3}
+            step={0.01}
+            onChange={(v) => setParam('gamma', v)}
+          />
+          <Slider
+            label="Out Black"
+            value={effect.params.outputBlack}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('outputBlack', v)}
+          />
+          <Slider
+            label="Out White"
+            value={effect.params.outputWhite}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('outputWhite', v)}
+          />
+        </>
+      )}
+      {effect.kind === 'blackAndWhite' && (
+        <>
+          <Slider
+            label="Red"
+            value={effect.params.red}
+            min={-1}
+            max={2}
+            step={0.01}
+            onChange={(v) => setParam('red', v)}
+          />
+          <Slider
+            label="Green"
+            value={effect.params.green}
+            min={-1}
+            max={2}
+            step={0.01}
+            onChange={(v) => setParam('green', v)}
+          />
+          <Slider
+            label="Blue"
+            value={effect.params.blue}
+            min={-1}
+            max={2}
+            step={0.01}
+            onChange={(v) => setParam('blue', v)}
+          />
+          <Slider
+            label="Amount"
+            value={effect.params.amount}
+            min={0}
+            max={1}
+            step={0.01}
+            onChange={(v) => setParam('amount', v)}
           />
         </>
       )}

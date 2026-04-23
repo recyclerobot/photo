@@ -13,6 +13,10 @@ export type BlendMode = 'normal' | 'add' | 'multiply' | 'screen' | 'overlay' | '
 export type EffectKind =
   | 'brightnessContrast'
   | 'hsl'
+  | 'saturation'
+  | 'colorBalance'
+  | 'levels'
+  | 'blackAndWhite'
   | 'blur'
   | 'dropShadow'
   | 'invert'
@@ -33,6 +37,19 @@ export interface EffectBase<K extends EffectKind, P> {
 export type Effect =
   | EffectBase<'brightnessContrast', { brightness: number; contrast: number }>
   | EffectBase<'hsl', { hue: number; saturation: number; lightness: number }>
+  | EffectBase<'saturation', { amount: number }>
+  | EffectBase<'colorBalance', { cyanRed: number; magentaGreen: number; yellowBlue: number }>
+  | EffectBase<
+      'levels',
+      {
+        inputBlack: number;
+        inputWhite: number;
+        gamma: number;
+        outputBlack: number;
+        outputWhite: number;
+      }
+    >
+  | EffectBase<'blackAndWhite', { red: number; green: number; blue: number; amount: number }>
   | EffectBase<'blur', { strength: number; quality: number }>
   | EffectBase<
       'dropShadow',
