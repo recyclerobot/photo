@@ -246,6 +246,19 @@ function TextProps({ object }: { object: TextObject }) {
       <Row label="Weight">
         <Num value={object.fontWeight} onChange={(v) => set({ fontWeight: v })} />
       </Row>
+      <Row label="Line height">
+        <Num
+          value={object.lineHeight}
+          step={0.05}
+          onChange={(v) => set({ lineHeight: Math.max(0.25, Math.min(5, v)) })}
+        />
+      </Row>
+      <Row label="Spacing">
+        <Num
+          value={object.letterSpacing}
+          onChange={(v) => set({ letterSpacing: Math.max(-50, Math.min(200, v)) })}
+        />
+      </Row>
       <Row label="Color">
         <input
           type="color"
@@ -287,10 +300,19 @@ function CompactRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-function Num({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function Num({
+  value,
+  onChange,
+  step,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+}) {
   return (
     <input
       type="number"
+      step={step}
       value={Number.isFinite(value) ? Math.round(value * 100) / 100 : 0}
       onChange={(e) => {
         const v = parseFloat(e.target.value);

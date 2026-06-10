@@ -102,6 +102,8 @@ function migrateObject(entry: unknown): LayerObject | null {
       fontWeight: numOr(raw.fontWeight, 600),
       color: stringOr(raw.color, '#ffffff'),
       align: (raw.align as 'left' | 'center' | 'right') ?? 'left',
+      lineHeight: numOr(raw.lineHeight, 1.25),
+      letterSpacing: numOr(raw.letterSpacing, 0),
     };
   }
   return {

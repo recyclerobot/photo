@@ -230,7 +230,9 @@ export class PixiScene {
         prev.fontSize !== tl.fontSize ||
         prev.fontWeight !== tl.fontWeight ||
         prev.color !== tl.color ||
-        prev.align !== tl.align;
+        prev.align !== tl.align ||
+        prev.lineHeight !== tl.lineHeight ||
+        prev.letterSpacing !== tl.letterSpacing;
       if (styleChanged) {
         if (node.display.text !== tl.text) node.display.text = tl.text;
         node.display.style = this.textStyleFor(tl) as unknown as Text['style'];
@@ -307,6 +309,9 @@ export class PixiScene {
       fontWeight: String(layer.fontWeight) as 'normal',
       fill: layer.color,
       align: layer.align,
+      // Pixi expects line height in px; the object stores a multiplier.
+      lineHeight: layer.fontSize * layer.lineHeight,
+      letterSpacing: layer.letterSpacing,
       wordWrap: false,
     };
   }

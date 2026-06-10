@@ -369,7 +369,16 @@ export const useEditor = create<EditorState>()(
         const fontFamily = 'Inter, system-ui, sans-serif';
         const fontSize = 64;
         const fontWeight = 600;
-        const measured = measureText(text, fontFamily, fontSize, fontWeight);
+        const lineHeight = 1.25;
+        const letterSpacing = 0;
+        const measured = measureText(
+          text,
+          fontFamily,
+          fontSize,
+          fontWeight,
+          lineHeight,
+          letterSpacing,
+        );
         const w = Math.max(20, measured.width);
         const h = Math.max(20, measured.height);
         const obj: TextObject = {
@@ -383,6 +392,8 @@ export const useEditor = create<EditorState>()(
           fontWeight,
           color: '#ffffff',
           align: 'left',
+          lineHeight,
+          letterSpacing,
           x: doc.widthPx / 2 - w / 2,
           y: doc.heightPx / 2 - h / 2,
           width: w,
@@ -444,6 +455,8 @@ export const useEditor = create<EditorState>()(
                   merged.fontFamily,
                   merged.fontSize,
                   merged.fontWeight,
+                  merged.lineHeight,
+                  merged.letterSpacing,
                 );
                 merged.width = m.width;
                 merged.height = m.height;

@@ -755,7 +755,10 @@ function TextEditorOverlay({
     return undefined;
   });
   const view = useEditor((s) => s.view);
-  const docSize = useEditor((s) => ({ w: s.doc.widthPx, h: s.doc.heightPx }));
+  // Select primitives: returning a fresh object here makes the store snapshot
+  // unstable and sends useSyncExternalStore into an infinite re-render loop.
+  const docW = useEditor((s) => s.doc.widthPx);
+  const docH = useEditor((s) => s.doc.heightPx);
   const updateObject = useEditor((s) => s.updateObject);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -772,8 +775,8 @@ function TextEditorOverlay({
   const hostRect = host.getBoundingClientRect();
   const screenW = hostRect.width;
   const screenH = hostRect.height;
-  const worldX = screenW / 2 - (docSize.w * view.zoom) / 2 + view.panX;
-  const worldY = screenH / 2 - (docSize.h * view.zoom) / 2 + view.panY;
+  const worldX = screenW / 2 - (docW * view.zoom) / 2 + view.panX;
+  const worldY = screenH / 2 - (docH * view.zoom) / 2 + view.panY;
   const left = worldX + tl.x * view.zoom;
   const top = worldY + tl.y * view.zoom;
 
@@ -803,7 +806,8 @@ function TextEditorOverlay({
         transformOrigin: '50% 50%',
         transform: `rotate(${tl.rotation}rad)`,
         font: `${tl.fontWeight} ${tl.fontSize * view.zoom}px ${tl.fontFamily}`,
-        lineHeight: 1.25,
+        lineHeight: tl.lineHeight,
+        letterSpacing: `${tl.letterSpacing * view.zoom}px`,
         color: tl.color,
         background: 'transparent',
         textAlign: tl.align,

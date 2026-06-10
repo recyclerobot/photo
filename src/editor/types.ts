@@ -110,6 +110,10 @@ export interface TextObject extends BaseObject {
   fontWeight: number;
   color: string;
   align: 'left' | 'center' | 'right';
+  /** Line height as a multiple of font size (1.25 = 125%). */
+  lineHeight: number;
+  /** Extra spacing between characters, in px. */
+  letterSpacing: number;
 }
 
 export type LayerObject = ImageObject | TextObject | ShapeObject;
