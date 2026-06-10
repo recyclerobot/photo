@@ -39,7 +39,7 @@ export class TransformOverlay {
     this.container.visible = false;
   }
 
-  draw(layer: LayerObject, inverseZoom: number) {
+  draw(layer: LayerObject, inverseZoom: number, locked = false) {
     this.container.visible = true;
     const { x, y, width, height, rotation } = layer;
     const cx = x + width / 2;
@@ -57,14 +57,18 @@ export class TransformOverlay {
     this.outline.clear();
     this.outline
       .rect(-hw, -hh, w, h)
-      .stroke({ width: 1.5 * inverseZoom, color: HANDLE_COLOR, alpha: 0.9 });
+      .stroke({ width: 1.5 * inverseZoom, color: HANDLE_COLOR, alpha: locked ? 0.4 : 0.9 });
+
+    this.handles.clear();
+    // Locked objects show a dimmed outline only — no transform handles.
+    if (locked) return;
+
     // rotate stem
     this.outline
       .moveTo(0, -hh)
       .lineTo(0, -hh - ro)
       .stroke({ width: 1.5 * inverseZoom, color: HANDLE_COLOR, alpha: 0.9 });
 
-    this.handles.clear();
     const drawHandle = (px: number, py: number) => {
       this.handles
         .rect(px - hsz / 2, py - hsz / 2, hsz, hsz)

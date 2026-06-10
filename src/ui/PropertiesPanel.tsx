@@ -1,5 +1,6 @@
 import { useEditor, flatObjects } from '../editor/store';
 import type { ImageObject, LayerObject, ShapeObject, TextObject } from '../editor/types';
+import { useLocalFonts } from './useLocalFonts';
 
 const FONT_FAMILIES = [
   'Inter',
@@ -193,6 +194,8 @@ function ShapeProps({ object }: { object: ShapeObject }) {
 function TextProps({ object }: { object: TextObject }) {
   const update = useEditor((s) => s.updateObject);
   const set = (patch: Partial<TextObject>) => update(object.id, patch as Partial<LayerObject>);
+  const localFonts = useLocalFonts();
+  const families = localFonts.fonts.length ? localFonts.fonts : FONT_FAMILIES;
   return (
     <div className="mt-2 flex flex-col gap-2 border-t border-black/30 pt-2">
       <Row label="Text">
@@ -203,17 +206,39 @@ function TextProps({ object }: { object: TextObject }) {
         />
       </Row>
       <Row label="Font">
-        <input
-          list="font-family-options"
-          value={object.fontFamily}
-          onChange={(e) => set({ fontFamily: e.target.value })}
-          className="w-full rounded bg-panel-2 px-1.5 py-1 text-zinc-200 outline-none"
-        />
-        <datalist id="font-family-options">
-          {FONT_FAMILIES.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
+        <div className="flex flex-col gap-1">
+          <input
+            list="font-family-options"
+            value={object.fontFamily}
+            onChange={(e) => set({ fontFamily: e.target.value })}
+            style={{ fontFamily: object.fontFamily }}
+            className="w-full rounded bg-panel-2 px-1.5 py-1 text-zinc-200 outline-none"
+          />
+          <datalist id="font-family-options">
+            {families.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+          {localFonts.supported && localFonts.status !== 'loaded' && (
+            <button
+              type="button"
+              onClick={() => void localFonts.load()}
+              disabled={localFonts.status === 'loading'}
+              className="self-start rounded bg-panel-2 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-panel-3 hover:text-zinc-100 disabled:opacity-40"
+            >
+              {localFonts.status === 'loading'
+                ? 'Loading fonts…'
+                : localFonts.status === 'denied'
+                  ? 'Font access denied — retry'
+                  : 'List all installed fonts'}
+            </button>
+          )}
+          {localFonts.status === 'loaded' && (
+            <span className="text-[10px] text-zinc-500">
+              {localFonts.fonts.length} installed fonts available
+            </span>
+          )}
+        </div>
       </Row>
       <Row label="Size">
         <Num value={object.fontSize} onChange={(v) => set({ fontSize: Math.max(1, v) })} />

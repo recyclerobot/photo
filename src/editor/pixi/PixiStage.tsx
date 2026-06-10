@@ -132,6 +132,15 @@ function findObject(objectId: string | null): LayerObject | undefined {
   return undefined;
 }
 
+/** An object can't be transformed when it — or its parent layer — is locked. */
+function isObjectLocked(objectId: string | null): boolean {
+  if (!objectId) return false;
+  for (const { layer, object } of flatObjects(useEditor.getState().doc)) {
+    if (object.id === objectId) return layer.locked || object.locked;
+  }
+  return false;
+}
+
 /**
  * Full-page Pixi canvas. Owns the PixiScene + TransformOverlay and bridges
  * pointer/wheel/keyboard input into the editor store. All transform
@@ -267,7 +276,7 @@ export function PixiStage() {
     const { doc, selectedObjectId, additionalSelectedObjectIds, view } = useEditor.getState();
     const primary = selectedObjectId ? findObject(selectedObjectId) : undefined;
     if (!primary) overlay.hide();
-    else overlay.draw(primary, 1 / view.zoom);
+    else overlay.draw(primary, 1 / view.zoom, isObjectLocked(primary.id));
 
     additional.clear();
     const inv = 1 / view.zoom;
@@ -348,7 +357,7 @@ export function PixiStage() {
     const state = useEditor.getState();
     const overlay = overlayRef.current!;
     const selected = findObject(state.selectedObjectId);
-    if (selected) {
+    if (selected && !isObjectLocked(selected.id)) {
       const handle = overlay.hitTest(selected, pt.x, pt.y, 1 / state.view.zoom);
       if (handle) {
         dragRef.current = {
@@ -415,6 +424,7 @@ export function PixiStage() {
     if (!sel) return;
     const allAdditional = useEditor.getState().additionalSelectedObjectIds;
     const additionalStarts = allAdditional
+      .filter((id) => !isObjectLocked(id))
       .map((id) => findObject(id))
       .filter((o): o is LayerObject => !!o)
       .map((o) => ({ id: o.id, x: o.x, y: o.y }));

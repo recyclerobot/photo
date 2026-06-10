@@ -8,10 +8,10 @@ const isEditableTarget = (t: EventTarget | null) => {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
 };
 
-function findObject(id: string | null): LayerObject | undefined {
+function findEntry(id: string | null) {
   if (!id) return undefined;
-  for (const { object } of flatObjects(useEditor.getState().doc)) {
-    if (object.id === id) return object;
+  for (const entry of flatObjects(useEditor.getState().doc)) {
+    if (entry.object.id === id) return entry;
   }
   return undefined;
 }
@@ -63,8 +63,6 @@ export function useKeyboard() {
       }
 
       if (id && e.key.startsWith('Arrow')) {
-        const obj = findObject(id);
-        if (!obj) return;
         const step = e.shiftKey ? 10 : 1;
         let dx = 0,
           dy = 0;
@@ -73,11 +71,14 @@ export function useKeyboard() {
         if (e.key === 'ArrowUp') dy = -step;
         if (e.key === 'ArrowDown') dy = step;
         e.preventDefault();
-        s.updateObject(id, { x: obj.x + dx, y: obj.y + dy } as Partial<LayerObject>);
-        for (const aid of s.additionalSelectedObjectIds) {
-          const ao = findObject(aid);
-          if (!ao) continue;
-          s.updateObject(aid, { x: ao.x + dx, y: ao.y + dy } as Partial<LayerObject>);
+        for (const oid of [id, ...s.additionalSelectedObjectIds]) {
+          const entry = findEntry(oid);
+          // Locked objects (or objects in locked layers) don't nudge.
+          if (!entry || entry.layer.locked || entry.object.locked) continue;
+          s.updateObject(oid, {
+            x: entry.object.x + dx,
+            y: entry.object.y + dy,
+          } as Partial<LayerObject>);
         }
       }
     };
