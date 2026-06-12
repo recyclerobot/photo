@@ -6,7 +6,7 @@ import { TransformOverlay, type HandleId } from './transformOverlay';
 import { SnapGuides, type GuideLine } from './snapGuides';
 import { setActiveScene, clearActiveScene } from './sceneRef';
 import { measureText } from '../text';
-import type { LayerObject, TextObject } from '../types';
+import type { CanvasDoc, LayerObject, TextObject } from '../types';
 
 interface DragState {
   startX: number;
@@ -675,6 +675,38 @@ export function PixiStage() {
   useEffect(() => {
     setActiveScene(() => sceneRef.current);
     return () => clearActiveScene();
+  }, []);
+
+  // Free GPU memory for images no longer reachable from the doc OR its
+  // undo/redo history (anything in history can come back via undo, so it
+  // must stay cached). Debounced — doc changes fire on every edit tick.
+  useEffect(() => {
+    let timer: number | null = null;
+    const unsub = useEditor.subscribe(
+      (s) => s.doc,
+      () => {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          timer = null;
+          const scene = sceneRef.current;
+          if (!scene) return;
+          const s = useEditor.getState();
+          const keep = new Set<string>();
+          const collect = (d: CanvasDoc) => {
+            for (const l of d.layers)
+              for (const o of l.objects) if (o.type === 'image') keep.add(o.src);
+          };
+          collect(s.doc);
+          for (const h of s.past) collect(h.doc);
+          for (const h of s.future) collect(h.doc);
+          scene.pruneTextureCache(keep);
+        }, 1500);
+      },
+    );
+    return () => {
+      unsub();
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {

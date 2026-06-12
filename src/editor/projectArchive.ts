@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { useEditor } from './store';
 import { migrateDoc } from './migration';
 import type { CanvasDoc, Layer } from './types';
+import { notify } from '../ui/notices';
 
 const PROJECT_VERSION = 1;
 const ASSETS_DIR = 'assets';
@@ -76,6 +77,7 @@ export async function importProjectZip(file: File): Promise<void> {
 
   // Resolve every image src — when it points inside the archive, swap it for
   // a data URL inline; otherwise leave the original (data: or remote) URL.
+  const missing: string[] = [];
   const layers: Layer[] = await Promise.all(
     (manifest.doc.layers ?? []).map(async (layer) => ({
       ...layer,
@@ -85,7 +87,10 @@ export async function importProjectZip(file: File): Promise<void> {
           const src = obj.src;
           if (typeof src !== 'string' || !isArchivePath(src)) return obj;
           const entry = zip.file(src);
-          if (!entry) return obj;
+          if (!entry) {
+            missing.push(obj.name || src);
+            return obj;
+          }
           const base64 = await entry.async('base64');
           const mime = mimeFromPath(src);
           return { ...obj, src: `data:${mime};base64,${base64}` };
@@ -96,6 +101,12 @@ export async function importProjectZip(file: File): Promise<void> {
 
   const doc = migrateDoc({ ...manifest.doc, layers });
   useEditor.getState().setDoc(doc, { record: true });
+  if (missing.length > 0) {
+    notify(
+      'warning',
+      `Project loaded, but ${missing.length} image${missing.length === 1 ? ' is' : 's are'} missing from the archive: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}`,
+    );
+  }
 }
 
 function isArchivePath(s: string): boolean {

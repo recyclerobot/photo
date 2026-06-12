@@ -327,6 +327,20 @@ export class PixiScene {
   }
 
   /**
+   * Drop cached textures whose src is not in `keep` and free their GPU
+   * memory. Callers must include every src reachable from the current doc
+   * AND the undo/redo history — anything else may be restored by undo.
+   */
+  pruneTextureCache(keep: ReadonlySet<string>) {
+    for (const src of [...this.textureCache.keys()]) {
+      if (keep.has(src)) continue;
+      this.textureCache.delete(src);
+      // Assets.unload removes from Pixi's cache and destroys the texture.
+      void Assets.unload(src).catch(() => {});
+    }
+  }
+
+  /**
    * Hit-test the topmost object at doc-space (x, y). Returns the object id
    * along with its parent layer id, or null if nothing is hit. Locked or
    * hidden layers/objects are skipped.

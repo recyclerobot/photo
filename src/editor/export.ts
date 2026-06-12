@@ -1,5 +1,6 @@
 import { getActiveScene } from './pixi/sceneRef';
 import { useEditor } from './store';
+import { notify } from '../ui/notices';
 
 export interface ExportOptions {
   scale: 1 | 2 | 3;
@@ -41,12 +42,25 @@ export async function exportPng(opts: ExportOptions): Promise<void> {
 }
 
 export async function importImageFiles(files: FileList | File[]): Promise<void> {
-  const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
+  const all = Array.from(files);
+  const arr = all.filter((f) => f.type.startsWith('image/'));
+  if (arr.length === 0 && all.length > 0) {
+    notify('warning', 'No image files found — only image formats can be imported.');
+    return;
+  }
+  const failed: string[] = [];
   for (const file of arr) {
-    // Use data URLs so the image survives reload (blob: URLs are session-scoped).
-    const url = await readFileAsDataURL(file);
-    const dims = await readImageDimensions(url);
-    useEditor.getState().addImageObject(url, dims.width, dims.height, file.name);
+    try {
+      // Use data URLs so the image survives reload (blob: URLs are session-scoped).
+      const url = await readFileAsDataURL(file);
+      const dims = await readImageDimensions(url);
+      useEditor.getState().addImageObject(url, dims.width, dims.height, file.name);
+    } catch {
+      failed.push(file.name);
+    }
+  }
+  if (failed.length > 0) {
+    notify('error', `Could not import: ${failed.join(', ')}`);
   }
 }
 

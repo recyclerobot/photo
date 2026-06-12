@@ -159,3 +159,12 @@ export const DEFAULT_DOC: CanvasDoc = {
   layers: [],
   guides: [],
 };
+
+/**
+ * Hard upper bound for canvas dimensions. WebGL texture limits are typically
+ * 8–16k; beyond that the renderer blanks or OOMs, so the store clamps here.
+ */
+export const MAX_CANVAS_PX = 8192;
+
+export const clampCanvasDim = (v: number): number =>
+  Math.max(1, Math.min(MAX_CANVAS_PX, Math.round(v)));

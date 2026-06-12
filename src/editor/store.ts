@@ -13,7 +13,7 @@ import type {
   TextObject,
   ViewState,
 } from './types';
-import { DEFAULT_DOC } from './types';
+import { DEFAULT_DOC, clampCanvasDim } from './types';
 import { defaultEffectFor } from './effects';
 import { measureText } from './text';
 import { migrateDoc } from './migration';
@@ -97,6 +97,22 @@ interface EditorState {
 
 const HISTORY_MAX = 50;
 
+/**
+ * Text objects auto-size from their content; only these fields require a
+ * re-measure. width/height are included so direct patches to them get
+ * re-derived (text dimensions are never authoritative).
+ */
+const TEXT_METRIC_FIELDS = [
+  'text',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'lineHeight',
+  'letterSpacing',
+  'width',
+  'height',
+] as const;
+
 const cloneEffect = (e: Effect): Effect => ({ ...e, params: { ...e.params } }) as Effect;
 
 const cloneObject = (o: LayerObject): LayerObject =>
@@ -152,12 +168,41 @@ const baseObjectDefaults = (): Pick<
   effects: [],
 });
 
+/** Rapid same-key mutations within this window collapse into one undo step. */
+const COALESCE_MS = 300;
+
 export const useEditor = create<EditorState>()(
   subscribeWithSelector((set, get) => {
-    const recordAnd = (mutator: (doc: CanvasDoc) => CanvasDoc) => {
+    let lastRecord: { key: string; at: number } | null = null;
+
+    /**
+     * Record an undo step, then apply `mutator`. When `coalesceKey` is given
+     * and matches the previous record within COALESCE_MS, the existing history
+     * entry is kept instead of pushing a new one — so slider drags, canvas
+     * drags, and typing become one undo step per burst, not one per tick.
+     */
+    const recordAnd = (mutator: (doc: CanvasDoc) => CanvasDoc, coalesceKey?: string) => {
       const { doc, past } = get();
+      const now = Date.now();
+      if (
+        coalesceKey &&
+        lastRecord &&
+        lastRecord.key === coalesceKey &&
+        now - lastRecord.at < COALESCE_MS &&
+        past.length > 0
+      ) {
+        lastRecord.at = now;
+        set({ doc: mutator(cloneDoc(doc)), future: [] });
+        return;
+      }
+      lastRecord = coalesceKey ? { key: coalesceKey, at: now } : null;
       const nextPast = [...past, { doc: cloneDoc(doc) }].slice(-HISTORY_MAX);
       set({ doc: mutator(cloneDoc(doc)), past: nextPast, future: [] });
+    };
+
+    /** Coalescing must never merge across an undo/redo or document switch. */
+    const breakCoalescing = () => {
+      lastRecord = null;
     };
 
     /**
@@ -191,6 +236,7 @@ export const useEditor = create<EditorState>()(
       future: [],
 
       setDoc: (doc, options) => {
+        breakCoalescing();
         const safe: CanvasDoc = migrateDoc(doc);
         if (options?.record !== false) {
           const { past, doc: prev } = get();
@@ -213,6 +259,7 @@ export const useEditor = create<EditorState>()(
       },
 
       newDoc: (widthPx, heightPx, backgroundColor) => {
+        breakCoalescing();
         // revoke any object URLs
         get().doc.layers.forEach((l) =>
           l.objects.forEach((o) => {
@@ -220,7 +267,13 @@ export const useEditor = create<EditorState>()(
           }),
         );
         set({
-          doc: { widthPx, heightPx, backgroundColor, layers: [], guides: [] },
+          doc: {
+            widthPx: clampCanvasDim(widthPx),
+            heightPx: clampCanvasDim(heightPx),
+            backgroundColor,
+            layers: [],
+            guides: [],
+          },
           past: [],
           future: [],
           selectedLayerId: null,
@@ -229,9 +282,14 @@ export const useEditor = create<EditorState>()(
         });
       },
 
-      setCanvasSize: (widthPx, heightPx) => recordAnd((d) => ({ ...d, widthPx, heightPx })),
+      setCanvasSize: (widthPx, heightPx) =>
+        recordAnd((d) => ({
+          ...d,
+          widthPx: clampCanvasDim(widthPx),
+          heightPx: clampCanvasDim(heightPx),
+        })),
 
-      setBackgroundColor: (color) => recordAnd((d) => ({ ...d, backgroundColor: color })),
+      setBackgroundColor: (color) => recordAnd((d) => ({ ...d, backgroundColor: color }), 'bg'),
 
       // ---------------- layer-container ops ----------------
 
@@ -311,10 +369,13 @@ export const useEditor = create<EditorState>()(
         }),
 
       updateLayer: (id, patch) =>
-        recordAnd((d) => ({
-          ...d,
-          layers: d.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)),
-        })),
+        recordAnd(
+          (d) => ({
+            ...d,
+            layers: d.layers.map((l) => (l.id === id ? ({ ...l, ...patch } as Layer) : l)),
+          }),
+          `layer:${id}:${Object.keys(patch).sort().join('+')}`,
+        ),
 
       selectLayer: (id) => {
         const s = get();
@@ -442,29 +503,36 @@ export const useEditor = create<EditorState>()(
       },
 
       updateObject: (id, patch) =>
-        recordAnd((d) => ({
-          ...d,
-          layers: d.layers.map((l) => ({
-            ...l,
-            objects: l.objects.map((o) => {
-              if (o.id !== id) return o;
-              const merged = { ...o, ...patch } as LayerObject;
-              if (merged.type === 'text') {
-                const m = measureText(
-                  merged.text,
-                  merged.fontFamily,
-                  merged.fontSize,
-                  merged.fontWeight,
-                  merged.lineHeight,
-                  merged.letterSpacing,
-                );
-                merged.width = m.width;
-                merged.height = m.height;
-              }
-              return merged;
-            }),
-          })),
-        })),
+        recordAnd(
+          (d) => ({
+            ...d,
+            layers: d.layers.map((l) => ({
+              ...l,
+              objects: l.objects.map((o) => {
+                if (o.id !== id) return o;
+                const merged = { ...o, ...patch } as LayerObject;
+                // Re-measure only when a text-metric field changed — not on
+                // every x/y tick of a canvas drag.
+                if (merged.type === 'text' && TEXT_METRIC_FIELDS.some((k) => k in patch)) {
+                  const m = measureText(
+                    merged.text,
+                    merged.fontFamily,
+                    merged.fontSize,
+                    merged.fontWeight,
+                    merged.lineHeight,
+                    merged.letterSpacing,
+                  );
+                  merged.width = m.width;
+                  merged.height = m.height;
+                }
+                return merged;
+              }),
+            })),
+          }),
+          // Keyed by fields (not id) so interleaved multi-select drag ticks
+          // still collapse into a single undo step.
+          `obj:${Object.keys(patch).sort().join('+')}`,
+        ),
 
       removeObject: (id) => {
         const found = findObject(get().doc, id);
@@ -630,31 +698,36 @@ export const useEditor = create<EditorState>()(
         })),
 
       updateEffect: (objectId, effectId, patch) =>
-        recordAnd((d) => ({
-          ...d,
-          layers: d.layers.map((l) => ({
-            ...l,
-            objects: l.objects.map((o) =>
-              o.id === objectId
-                ? ({
-                    ...o,
-                    effects: o.effects.map((e) =>
-                      e.id === effectId
-                        ? ({
-                            ...e,
-                            ...patch,
-                            params: {
-                              ...e.params,
-                              ...((patch as { params?: object }).params ?? {}),
-                            },
-                          } as Effect)
-                        : e,
-                    ),
-                  } as LayerObject)
-                : o,
-            ),
-          })),
-        })),
+        recordAnd(
+          (d) => ({
+            ...d,
+            layers: d.layers.map((l) => ({
+              ...l,
+              objects: l.objects.map((o) =>
+                o.id === objectId
+                  ? ({
+                      ...o,
+                      effects: o.effects.map((e) =>
+                        e.id === effectId
+                          ? ({
+                              ...e,
+                              ...patch,
+                              params: {
+                                ...e.params,
+                                ...((patch as { params?: object }).params ?? {}),
+                              },
+                            } as Effect)
+                          : e,
+                      ),
+                    } as LayerObject)
+                  : o,
+              ),
+            })),
+          }),
+          `fx:${objectId}:${effectId}:${Object.keys((patch as { params?: object }).params ?? patch)
+            .sort()
+            .join('+')}`,
+        ),
 
       removeEffect: (objectId, effectId) =>
         recordAnd((d) => ({
@@ -678,7 +751,7 @@ export const useEditor = create<EditorState>()(
           if (index < 0 || index >= guides.length) return d;
           guides[index] = { ...g };
           return { ...d, guides };
-        }),
+        }, `guide:${index}`),
       removeGuide: (index) =>
         recordAnd((d) => {
           const guides = [...(d.guides ?? [])];
@@ -695,6 +768,7 @@ export const useEditor = create<EditorState>()(
       undo: () => {
         const { past, future, doc } = get();
         if (past.length === 0) return;
+        breakCoalescing();
         const prev = past[past.length - 1];
         set({
           past: past.slice(0, -1),
@@ -706,6 +780,7 @@ export const useEditor = create<EditorState>()(
       redo: () => {
         const { past, future, doc } = get();
         if (future.length === 0) return;
+        breakCoalescing();
         const next = future[future.length - 1];
         set({
           future: future.slice(0, -1),

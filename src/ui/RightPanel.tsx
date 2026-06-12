@@ -41,7 +41,12 @@ export function RightPanel() {
         </FloatingWindow>
       )}
       {panels.layers && (
-        <FloatingWindow windowKey="layers" title="Layers" onClose={() => setPanel('layers', false)}>
+        <FloatingWindow
+          windowKey="layers"
+          title="Layers"
+          noScroll
+          onClose={() => setPanel('layers', false)}
+        >
           <LayersPanel />
         </FloatingWindow>
       )}

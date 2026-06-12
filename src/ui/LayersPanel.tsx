@@ -194,67 +194,71 @@ export function LayersPanel() {
 
   return (
     <div
-      className="flex flex-col gap-2"
+      className="flex h-full flex-col gap-2"
       onDragOver={onDragOverPanel}
       onDragEnter={onDragOverPanel}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
     >
       <SelectionControls />
-      <div ref={listRef} className="flex flex-col">
-        {orderedLayers.length === 0 ? (
-          <div className="px-1 py-2 text-zinc-500">
-            No layers yet. Add one below — or add a drawable to auto-create one.
-          </div>
-        ) : (
-          orderedLayers.map((l, i) => (
-            <div
-              key={l.id}
-              onDragOver={(e) => onDragOverLayerBlock(e, i)}
-              onDragEnter={(e) => onDragOverLayerBlock(e, i)}
-            >
-              {drop?.kind === 'layer' && drop.layerDisplayIndex === i && <DropIndicator />}
-              <LayerRow
-                layer={l}
-                isActive={selectedLayerId === l.id}
-                isCollapsed={collapsed.has(l.id)}
-                isDragging={drag?.kind === 'layer' && drag.id === l.id}
-                isDropInto={!!drop?.intoLayer && drop.layerId === l.id}
-                onToggleCollapsed={() => toggleCollapsed(l.id)}
-                onSelect={() => selectLayer(l.id)}
-                onToggleVisible={() => updateLayer(l.id, { visible: !l.visible })}
-                onToggleLock={() => updateLayer(l.id, { locked: !l.locked })}
-                onRename={(name) => updateLayer(l.id, { name })}
-                onDuplicate={() => duplicateLayer(l.id)}
-                onDelete={() => removeLayer(l.id)}
-                onDragStart={(e) => onDragStartLayer(e, l.id)}
-                onDragOver={(e) => onDragOverLayerRow(e, l.id)}
-              />
-
-              {!collapsed.has(l.id) && (
-                <ObjectList
-                  layer={l}
-                  selectedObjectId={selectedObjectId}
-                  additionalSelectedObjectIds={additionalSelectedObjectIds}
-                  drop={drop}
-                  drag={drag}
-                  onDragOverLayerBody={(e) => onDragOverLayerBody(e, l.id)}
-                  onObjectDragStart={(e, oid) => onDragStartObject(e, l.id, oid)}
-                  onObjectDragOver={(e, idx) => onDragOverObjectRow(e, l.id, idx)}
-                  onObjectClick={(oid) => selectObject(oid)}
-                  onObjectToggleVisible={(oid, vis) => updateObject(oid, { visible: vis })}
-                  onObjectToggleLock={(oid, locked) => updateObject(oid, { locked })}
-                  onObjectRename={(oid, name) => updateObject(oid, { name })}
-                  onObjectDuplicate={(oid) => duplicateObject(oid)}
-                  onObjectDelete={(oid) => removeObject(oid)}
-                />
-              )}
+      {/* Scroll region between the pinned header and footer. The ref stays on
+          the content so drops above/below it resolve to top/bottom of stack. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={listRef} className="flex flex-col">
+          {orderedLayers.length === 0 ? (
+            <div className="px-1 py-2 text-zinc-500">
+              No layers yet. Add one below — or add a drawable to auto-create one.
             </div>
-          ))
-        )}
-        {drop?.kind === 'layer' && drop.layerDisplayIndex === orderedLayers.length && (
-          <DropIndicator />
-        )}
+          ) : (
+            orderedLayers.map((l, i) => (
+              <div
+                key={l.id}
+                onDragOver={(e) => onDragOverLayerBlock(e, i)}
+                onDragEnter={(e) => onDragOverLayerBlock(e, i)}
+              >
+                {drop?.kind === 'layer' && drop.layerDisplayIndex === i && <DropIndicator />}
+                <LayerRow
+                  layer={l}
+                  isActive={selectedLayerId === l.id}
+                  isCollapsed={collapsed.has(l.id)}
+                  isDragging={drag?.kind === 'layer' && drag.id === l.id}
+                  isDropInto={!!drop?.intoLayer && drop.layerId === l.id}
+                  onToggleCollapsed={() => toggleCollapsed(l.id)}
+                  onSelect={() => selectLayer(l.id)}
+                  onToggleVisible={() => updateLayer(l.id, { visible: !l.visible })}
+                  onToggleLock={() => updateLayer(l.id, { locked: !l.locked })}
+                  onRename={(name) => updateLayer(l.id, { name })}
+                  onDuplicate={() => duplicateLayer(l.id)}
+                  onDelete={() => removeLayer(l.id)}
+                  onDragStart={(e) => onDragStartLayer(e, l.id)}
+                  onDragOver={(e) => onDragOverLayerRow(e, l.id)}
+                />
+
+                {!collapsed.has(l.id) && (
+                  <ObjectList
+                    layer={l}
+                    selectedObjectId={selectedObjectId}
+                    additionalSelectedObjectIds={additionalSelectedObjectIds}
+                    drop={drop}
+                    drag={drag}
+                    onDragOverLayerBody={(e) => onDragOverLayerBody(e, l.id)}
+                    onObjectDragStart={(e, oid) => onDragStartObject(e, l.id, oid)}
+                    onObjectDragOver={(e, idx) => onDragOverObjectRow(e, l.id, idx)}
+                    onObjectClick={(oid) => selectObject(oid)}
+                    onObjectToggleVisible={(oid, vis) => updateObject(oid, { visible: vis })}
+                    onObjectToggleLock={(oid, locked) => updateObject(oid, { locked })}
+                    onObjectRename={(oid, name) => updateObject(oid, { name })}
+                    onObjectDuplicate={(oid) => duplicateObject(oid)}
+                    onObjectDelete={(oid) => removeObject(oid)}
+                  />
+                )}
+              </div>
+            ))
+          )}
+          {drop?.kind === 'layer' && drop.layerDisplayIndex === orderedLayers.length && (
+            <DropIndicator />
+          )}
+        </div>
       </div>
       <div className="flex items-center justify-between border-t border-black/30 pt-1.5">
         <span className="px-1 text-[10px] text-zinc-500">

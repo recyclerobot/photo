@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useEditor } from '../editor/store';
+import { MAX_CANVAS_PX, clampCanvasDim } from '../editor/types';
 import { useLibrary } from '../library/libraryStore';
 import { Modal } from './Modal';
 
@@ -9,13 +10,10 @@ export function NewCanvasDialog({ onClose }: { onClose: () => void }) {
   const [height, setHeight] = useState(768);
   const [transparent, setTransparent] = useState(true);
   const [bg, setBg] = useState('#ffffff');
+  const tooBig = width > MAX_CANVAS_PX || height > MAX_CANVAS_PX;
 
   const onCreate = () => {
-    newDoc(
-      Math.max(1, Math.round(width)),
-      Math.max(1, Math.round(height)),
-      transparent ? null : bg,
-    );
+    newDoc(clampCanvasDim(width), clampCanvasDim(height), transparent ? null : bg);
     // Register a fresh library entry for the new canvas so subsequent edits
     // don't overwrite the previously-active design.
     useLibrary.getState().createNew(useEditor.getState().doc);
@@ -43,6 +41,12 @@ export function NewCanvasDialog({ onClose }: { onClose: () => void }) {
             />
           </Field>
         </div>
+        {tooBig && (
+          <div className="text-xs text-amber-400">
+            Maximum size is {MAX_CANVAS_PX} px per side (GPU texture limit) — values will be
+            clamped.
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {(

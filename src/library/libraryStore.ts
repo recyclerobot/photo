@@ -2,8 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CanvasDoc } from '../editor/types';
 import { DEFAULT_DOC } from '../editor/types';
+import { notify, dismissNotice } from '../ui/notices';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+const SAVE_FAILED_NOTICE = 'library-save-failed';
+let saveFailedShown = false;
 
 export interface DesignEntry {
   id: string;
@@ -135,8 +139,19 @@ export const useLibrary = create<LibraryState>()(
         setItem: (key, value) => {
           try {
             localStorage.setItem(key, JSON.stringify(value));
+            if (saveFailedShown) {
+              saveFailedShown = false;
+              dismissNotice(SAVE_FAILED_NOTICE);
+              notify('info', 'Autosave is working again.');
+            }
           } catch (err) {
             console.warn('Library save failed (storage quota?):', err);
+            saveFailedShown = true;
+            notify(
+              'error',
+              'Changes are NOT being saved — browser storage is full. Export your project (File → Export project) to keep your work, then delete old designs from the library.',
+              { id: SAVE_FAILED_NOTICE, sticky: true },
+            );
           }
         },
         removeItem: (key) => {

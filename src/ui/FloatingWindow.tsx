@@ -7,6 +7,8 @@ interface Props {
   onClose?: () => void;
   minW?: number;
   minH?: number;
+  /** When set, the child owns scrolling (e.g. to pin its own header/footer). */
+  noScroll?: boolean;
   children: React.ReactNode;
 }
 
@@ -30,6 +32,7 @@ export function FloatingWindow({
   onClose,
   minW = 200,
   minH = 120,
+  noScroll = false,
   children,
 }: Props) {
   const rect = useUI((s) => s.windows[windowKey]);
@@ -148,7 +151,9 @@ export function FloatingWindow({
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-2">{children}</div>
+      <div className={`min-h-0 flex-1 p-2 ${noScroll ? 'overflow-hidden' : 'overflow-auto'}`}>
+        {children}
+      </div>
 
       {/* Resize edges + corners */}
       <div

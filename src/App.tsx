@@ -11,6 +11,8 @@ import { useKeyboard } from './ui/useKeyboard';
 import { useDropzone } from './ui/useDropzone';
 import { useUI } from './ui/uiStore';
 import { useLibrarySync } from './library/useLibrarySync';
+import { ErrorBoundary } from './ui/ErrorBoundary';
+import { Notices } from './ui/NoticesView';
 
 export default function App() {
   const [showNew, setShowNew] = useState(false);
@@ -30,22 +32,28 @@ export default function App() {
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-[#1a1b1e] text-zinc-200">
-      <PixiStage />
+      <ErrorBoundary label="Canvas">
+        <PixiStage />
+      </ErrorBoundary>
 
-      <div data-ui-overlay className="pointer-events-none absolute inset-0">
-        <TopBar
-          onNew={() => setShowNew(true)}
-          onExport={() => setShowExport(true)}
-          onOpenLibrary={() => setShowLibrary(true)}
-        />
-        {showLeftToolbar && <LeftToolbar />}
-        <RightPanel />
-        <Rulers />
-      </div>
+      <ErrorBoundary label="Editor UI">
+        <div data-ui-overlay className="pointer-events-none absolute inset-0">
+          <TopBar
+            onNew={() => setShowNew(true)}
+            onExport={() => setShowExport(true)}
+            onOpenLibrary={() => setShowLibrary(true)}
+          />
+          {showLeftToolbar && <LeftToolbar />}
+          <RightPanel />
+          <Rulers />
+        </div>
 
-      {showNew && <NewCanvasDialog onClose={() => setShowNew(false)} />}
-      {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
-      {showLibrary && <LibraryDialog onClose={() => setShowLibrary(false)} />}
+        {showNew && <NewCanvasDialog onClose={() => setShowNew(false)} />}
+        {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
+        {showLibrary && <LibraryDialog onClose={() => setShowLibrary(false)} />}
+      </ErrorBoundary>
+
+      <Notices />
     </div>
   );
 }
